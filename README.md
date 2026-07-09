@@ -25,4 +25,4 @@ Developed as part of the **Infosys Virtual Internship**, this project provides a
 - Passlib (bcrypt)
 - Git & GitHub
 
-**Status:** ✅ Milestone 1 Completed
+**Status:** Milestone 1 Completed
