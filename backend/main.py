@@ -5,12 +5,19 @@ from sqlalchemy.orm import Session
 from typing import List
 
 import models, schemas
+from routers import analysis
 from database import engine, get_db
 from auth import hash_password, verify_password, create_access_token
 
 models.Base.metadata.create_all(bind=engine)  # creates the table automatically
 
 app = FastAPI(title="Sports Injury Risk Detection Platform")
+
+app.include_router(
+    analysis.router,
+    prefix="/api",
+    tags=["Video Analysis"]
+)
 
 # Allows your React frontend (different port) to call this backend
 app.add_middleware(
