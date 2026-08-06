@@ -1,9 +1,13 @@
 # backend/auth.py
+import os
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from jose import jwt
 from passlib.context import CryptContext
 
-SECRET_KEY = "change-this-to-something-random"
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-something-random")
 ALGORITHM = "HS256"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
