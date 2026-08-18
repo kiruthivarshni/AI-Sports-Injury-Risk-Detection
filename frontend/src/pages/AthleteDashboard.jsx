@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearSession, getSession } from "../api/auth";
+import { getProgressComparison } from "../api/analysis";
 import { useVideoAnalysis } from "../contexts/VideoAnalysisContext";
 import BiomechanicsReport from "../components/BiomechanicsReport";
 import ReportHistory from "../components/ReportHistory";
 import ProfileDropdown from "../components/ProfileDropdown";
 import ProfileModal from "../components/ProfileModal";
 import SettingsModal from "../components/SettingsModal";
+import NotificationBell from "../components/NotificationBell";
 import logo from "../assets/athenix-logo.jpeg";
 
 const NAV_ITEMS = [
@@ -23,6 +25,7 @@ function AthleteDashboard() {
   const [activeSection, setActiveSection] = useState("analysis");
   // viewingReport = full report opened from history or just generated
   const [viewingReport, setViewingReport] = useState(null);
+  const [progressData, setProgressData] = useState(null);
   const [file, setFile] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -57,6 +60,17 @@ function AthleteDashboard() {
       setViewingReport(report);
     }
   }, [report, isAnalyzing]);
+
+  useEffect(() => {
+  if (!viewingReport?.report_id) {
+    setProgressData(null);
+    return;
+  }
+
+  getProgressComparison(viewingReport.report_id)
+    .then(setProgressData)
+    .catch(() => setProgressData(null));
+}, [viewingReport]);
 
   const handleNavigate = useCallback((section) => {
     window.history.pushState({ section }, "", window.location.pathname);
@@ -122,7 +136,10 @@ function AthleteDashboard() {
               borderRadius: "8px", padding: "10px 12px",
               fontSize: "12px", color: "var(--risk-low)", cursor: "pointer"
             }}
-            onClick={() => handleNavigate("reports")}
+            onClick={() => {
+  setViewingReport(report);
+  handleNavigate("reports");
+}}
           >
             <div style={{ fontWeight: 600, marginBottom: "2px" }}>✅ Report Ready</div>
             <div style={{ opacity: 0.8 }}>Click to view →</div>
@@ -150,6 +167,7 @@ function AthleteDashboard() {
             >
               {theme === "light" ? "🌙 Dark" : "☀️ Light"}
             </button>
+            <NotificationBell />
             <ProfileDropdown
               name={name}
               onProfile={() => setShowProfile(true)}
@@ -209,9 +227,15 @@ function AthleteDashboard() {
                   <p style={{ fontSize: "13px", color: "var(--risk-low)", fontWeight: 600, margin: "0 0 10px" }}>
                     ✅ Analysis complete — report saved to your history.
                   </p>
-                  <button className="btn btn-primary" onClick={() => handleNavigate("reports")}>
-                    View Full Report →
-                  </button>
+                  <button
+  className="btn btn-primary"
+  onClick={() => {
+    setViewingReport(report);
+    handleNavigate("reports");
+  }}
+>
+  View Full Report →
+</button>
                 </div>
               )}
             </div>
@@ -228,7 +252,73 @@ function AthleteDashboard() {
                 >
                   ← Back to Report History
                 </button>
-                <BiomechanicsReport report={viewingReport} />
+                
+                {progressData?.has_previous && (
+  <div className="card" style={{ marginBottom: "16px" }}>
+    <h2
+      className="font-display"
+      style={{ fontSize: "16px", marginTop: 0, marginBottom: "14px" }}
+    >
+      Performance Trends
+    </h2>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+        gap: "12px",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: "12px", color: "var(--slate-500)" }}>
+          Movement Quality Change
+        </div>
+        <div
+          className="font-mono"
+          style={{ fontSize: "20px", fontWeight: 700 }}
+        >
+          {progressData.progress?.movement_quality_change ?? 0}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontSize: "12px", color: "var(--slate-500)" }}>
+          Injury Risk Change
+        </div>
+        <div
+          className="font-mono"
+          style={{ fontSize: "20px", fontWeight: 700 }}
+        >
+          {progressData.progress?.injury_risk_change ?? 0}
+        </div>
+      </div>
+    </div>
+
+    {progressData.progress?.performance_decline && (
+      <div
+        style={{
+          marginTop: "14px",
+          padding: "12px",
+          borderRadius: "8px",
+          background: "rgba(239,68,68,0.08)",
+          color: "var(--risk-critical)",
+          fontSize: "13px",
+        }}
+      >
+        <strong>Performance Decline Detected</strong>
+
+        {progressData.progress?.performance_decline_reason?.map(
+          (reason, index) => (
+            <div key={index} style={{ marginTop: "4px" }}>
+              {reason}
+            </div>
+          )
+        )}
+      </div>
+    )}
+  </div>
+)}
+            <BiomechanicsReport report={viewingReport} />
               </div>
             ) : (
               <ReportHistory onOpenReport={handleOpenReportFromHistory} />

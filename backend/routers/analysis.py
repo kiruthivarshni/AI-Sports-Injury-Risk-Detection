@@ -7,11 +7,14 @@ import json
 from datetime import datetime
 
 from database import get_db
-from vision.video_processor import extract_frames
+from vision.video_processor import extract_frames, assess_video_quality
 from vision.pose_estimator import detect_pose_for_frames
 from vision.biomechanics import (
-    calculate_frame_metrics, aggregate_metrics,
-    calculate_movement_quality_score, detect_movement_anomalies
+    calculate_frame_metrics,
+    aggregate_metrics,
+    calculate_movement_quality_score,
+    detect_movement_anomalies,
+    calculate_motion_trajectory
 )
 from vision.risk_scoring import calculate_injury_risk
 from vision.recommendation_engine import generate_recommendations
@@ -50,11 +53,23 @@ def _get_pose_results_for_video(video_filename: str):
             status_code=404,
             detail=f"No extracted frames found for '{video_filename}'. Upload the video first."
         )
-    frame_paths = sorted(glob.glob(os.path.join(frame_dir, "*.jpg")))
-    if not frame_paths:
-        raise HTTPException(status_code=404, detail="Frame folder exists but contains no images")
-    return detect_pose_for_frames(frame_paths), len(frame_paths)
 
+    frame_paths = sorted(glob.glob(os.path.join(frame_dir, "*.jpg")))
+
+    if not frame_paths:
+        raise HTTPException(
+            status_code=404,
+            detail="Frame folder exists but contains no images"
+        )
+
+    annotated_dir = os.path.join("uploads", "pose_output", video_name)
+
+    pose_results = detect_pose_for_frames(
+        frame_paths,
+        annotated_dir=annotated_dir
+    )
+
+    return pose_results, len(frame_paths)
 
 @router.post("/upload-video/")
 async def upload_video(file: UploadFile = File(...)):
@@ -67,20 +82,27 @@ async def upload_video(file: UploadFile = File(...)):
     with open(video_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    video_quality = assess_video_quality(video_path)    
+
     video_name = os.path.splitext(file.filename)[0]
     output_dir = os.path.join(FRAME_DIR, video_name)
 
     try:
-        frames = extract_frames(video_path, output_dir)
+        frames = extract_frames(
+    video_path,
+    output_dir,
+    apply_enhancement=video_quality["enhancement_required"]
+)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     return {
-        "message": "Video uploaded and frames extracted successfully",
-        "video_filename": file.filename,
-        "frames_extracted": len(frames),
-        "frame_folder": output_dir
-    }
+    "message": "Video uploaded and frames extracted successfully",
+    "video_filename": file.filename,
+    "frames_extracted": len(frames),
+    "frame_folder": output_dir,
+    "video_quality": video_quality
+}
 
 
 @router.post("/detect-pose/")
@@ -112,6 +134,7 @@ async def biomechanics_report(
     summary = aggregate_metrics(per_frame_metrics)
     quality_result = calculate_movement_quality_score(summary)
     anomalies = detect_movement_anomalies(summary)
+    motion_trajectory = calculate_motion_trajectory(pose_results)
 
     injury_history = ""
     training_load = ""
@@ -146,6 +169,8 @@ async def biomechanics_report(
         recommendations=recommendations,
         athlete_info=athlete_info
     )
+
+    report["motion_trajectory"] = motion_trajectory
 
     # Save report to database
     current_user = _resolve_user(authorization, db)
@@ -281,6 +306,24 @@ async def get_progress_comparison(
             current_report.injury_risk_score - previous_report.injury_risk_score, 2
         )
 
+
+    performance_decline = False
+    performance_decline_reason = []
+    
+
+    if q_change is not None and q_change < -5:
+        performance_decline = True
+        performance_decline_reason.append(
+            f"Movement quality decreased by {abs(q_change)} points"
+        )
+
+    if r_change is not None and r_change > 5:
+        performance_decline = True
+        performance_decline_reason.append(
+            f"Injury risk increased by {r_change} points"
+        )
+
+
     return {
         "has_previous": True,
         "current": {
@@ -302,6 +345,8 @@ async def get_progress_comparison(
         "progress": {
             "movement_quality_change": q_change,
             "injury_risk_change": r_change,
+            "performance_decline": performance_decline,
+            "performance_decline_reason": performance_decline_reason,
             "movement_quality_trend": (
                 "improved" if q_change and q_change > 0 else
                 "declined" if q_change and q_change < 0 else "unchanged"

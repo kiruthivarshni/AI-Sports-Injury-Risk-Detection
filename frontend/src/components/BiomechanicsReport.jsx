@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getProgressComparison } from "../api/analysis";
+import ExportButtons from "./ExportButtons";
 
 function Badge({ text, type }) {
   const classMap = {
@@ -172,9 +173,17 @@ function BiomechanicsReport({ report }) {
       </SectionCard>
 
       {/* Progress Tracking */}
-      <ProgressCard reportId={report_id} />
+<ProgressCard reportId={report_id} />
 
-      {/* Score Cards */}
+{/* Export */}
+<div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+  <ExportButtons
+    reportData={report}
+    filename={`athenix-${report_id || "report"}`}
+  />
+</div>
+
+{/* Score Cards */}
       <div className="stat-grid" style={{ marginBottom: "16px" }}>
         <div className="card">
           <p style={{ fontSize: "12px", color: "var(--slate-500)", margin: "0 0 6px" }}>

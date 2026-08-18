@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 
 mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
 
 # Maps your document's "Key Body Points" (Module 4) to MediaPipe's landmarks.
 # Both left and right sides are captured so symmetry analysis (Module 5) is possible.
@@ -49,10 +50,65 @@ def detect_pose_landmarks(frame_path: str):
     return landmarks
 
 
-def detect_pose_for_frames(frame_paths: list):
+def detect_pose_for_frames(frame_paths: list, annotated_dir: str = None):
     results = []
-    for frame_path in frame_paths:
-        landmarks = detect_pose_landmarks(frame_path)
-        if landmarks is not None:
-            results.append({"frame": frame_path, "landmarks": landmarks})
+
+    if annotated_dir:
+        import os
+        os.makedirs(annotated_dir, exist_ok=True)
+
+    # One MediaPipe Pose instance across all frames = temporal tracking
+    with mp_pose.Pose(
+        static_image_mode=False,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    ) as pose:
+
+        for frame_path in frame_paths:
+            image = cv2.imread(frame_path)
+            if image is None:
+                continue
+
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            pose_result = pose.process(image_rgb)
+
+            if not pose_result.pose_landmarks:
+                continue
+
+            landmarks = {}
+
+            for name, point in KEY_POINTS.items():
+                lm = pose_result.pose_landmarks.landmark[point]
+                landmarks[name] = {
+                    "x": round(lm.x, 4),
+                    "y": round(lm.y, 4),
+                    "z": round(lm.z, 4),
+                    "visibility": round(lm.visibility, 4),
+                }
+
+            annotated_path = None
+
+            if annotated_dir:
+                annotated = image.copy()
+
+                mp_drawing.draw_landmarks(
+                    annotated,
+                    pose_result.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS
+                )
+
+                import os
+                annotated_path = os.path.join(
+                    annotated_dir,
+                    os.path.basename(frame_path)
+                )
+
+                cv2.imwrite(annotated_path, annotated)
+
+            results.append({
+                "frame": frame_path,
+                "annotated_frame": annotated_path,
+                "landmarks": landmarks
+            })
+
     return results

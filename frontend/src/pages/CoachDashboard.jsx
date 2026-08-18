@@ -8,6 +8,7 @@ import ReportHistory from "../components/ReportHistory";
 import ProfileDropdown from "../components/ProfileDropdown";
 import ProfileModal from "../components/ProfileModal";
 import SettingsModal from "../components/SettingsModal";
+import NotificationBell from "../components/NotificationBell";
 import logo from "../assets/athenix-logo.jpeg";
 
 function generateAthleteId() {
@@ -245,6 +246,7 @@ function CoachDashboard() {
             >
               {theme === "light" ? "🌙 Dark" : "☀️ Light"}
             </button>
+            <NotificationBell />
             <ProfileDropdown
               name={name}
               onProfile={() => setShowProfile(true)}

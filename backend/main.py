@@ -275,3 +275,106 @@ def delete_my_account(
     return {
         "message": "Account and all associated data permanently deleted"
     }
+
+    # ── ADMIN: List all users ────────────────────────────────────────────────────
+@app.get("/admin/users")
+def admin_get_users(
+    authorization: str = Header(default=None),
+    db: Session = Depends(get_db)
+):
+    user = get_current_user(authorization, db)
+    if user.role != "Administrator":
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    users = db.query(models.User).all()
+    return [
+        {
+            "id": u.id,
+            "full_name": u.full_name,
+            "email": u.email,
+            "role": u.role,
+            "profile_completed": u.profile_completed,
+        }
+        for u in users
+    ]
+
+
+# ── ADMIN: Delete any user ───────────────────────────────────────────────────
+@app.delete("/admin/users/{user_id}")
+def admin_delete_user(
+    user_id: int,
+    authorization: str = Header(default=None),
+    db: Session = Depends(get_db)
+):
+    admin = get_current_user(authorization, db)
+    if admin.role != "Administrator":
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    if admin.id == user_id:
+        raise HTTPException(status_code=400, detail="Administrators cannot delete their own account here")
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    db.delete(target)
+    db.commit()
+    return {"message": f"User {user_id} permanently deleted"}
+
+
+# ── ADMIN: Platform stats ─────────────────────────────────────────────────────
+@app.get("/admin/stats")
+def admin_get_stats(
+    authorization: str = Header(default=None),
+    db: Session = Depends(get_db)
+):
+    user = get_current_user(authorization, db)
+    if user.role != "Administrator":
+        raise HTTPException(status_code=403, detail="Administrator access required")
+
+    total_users = db.query(models.User).count()
+    athletes = db.query(models.User).filter(models.User.role == "Athlete").count()
+    coaches = db.query(models.User).filter(models.User.role == "Coach").count()
+    physios = db.query(models.User).filter(models.User.role == "Physiotherapist").count()
+    scientists = db.query(models.User).filter(models.User.role == "Sports Scientist").count()
+    admins = db.query(models.User).filter(models.User.role == "Administrator").count()
+    total_reports = db.query(models.Report).count()
+    total_athletes = db.query(models.Athlete).count()
+
+    return {
+        "total_users": total_users,
+        "total_reports": total_reports,
+        "total_athletes": total_athletes,
+        "by_role": {
+            "Athlete": athletes,
+            "Coach": coaches,
+            "Physiotherapist": physios,
+            "Sports Scientist": scientists,
+            "Administrator": admins,
+        }
+    }
+
+# ── NOTIFICATIONS: High-risk report alerts ──────────────────────
+@app.get("/api/notifications")
+def get_notifications(
+    authorization: str = Header(default=None),
+    db: Session = Depends(get_db)
+):
+    user = get_current_user(authorization, db)
+
+    reports = (
+        db.query(models.Report)
+        .order_by(models.Report.created_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    alerts = []
+
+    for r in reports:
+        if r.risk_category in ("High Risk", "Critical Risk"):
+            alerts.append({
+                "id": r.id,
+                "type": "high_risk",
+                "message": f"{r.risk_category} detected for {r.athlete_name or 'an athlete'} — {r.video_filename}",
+                "report_id": r.report_id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            })
+
+    return alerts[:10]
