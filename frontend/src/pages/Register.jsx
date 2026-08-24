@@ -81,9 +81,12 @@ function Register() {
               value={form.confirmPassword} onChange={handleChange} required
             />
             <select className="input" name="role" value={form.role} onChange={handleChange}>
-              <option value="Athlete">Athlete</option>
-              <option value="Coach">Coach</option>
-            </select>
+  <option value="Athlete">Athlete</option>
+  <option value="Coach">Coach</option>
+  <option value="Physiotherapist">Physiotherapist</option>
+  <option value="Sports Scientist">Sports Scientist</option>
+  <option value="Administrator">Administrator</option>
+</select>
           </div>
           {error && <p style={{ color: "var(--risk-critical)", fontSize: "13px", marginTop: "12px" }}>{error}</p>}
           {success && <p style={{ color: "var(--risk-low)", fontSize: "13px", marginTop: "12px" }}>{success}</p>}

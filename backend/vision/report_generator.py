@@ -51,6 +51,10 @@ def generate_biomechanics_report(
             "injury_probability": risk_result.get("injury_probability") if risk_result else None,
             "breakdown": risk_result.get("breakdown") if risk_result else None,
             "injury_categories": risk_result.get("injury_categories", []) if risk_result else [],
+            "overuse_injury_risk": risk_result.get("overuse_injury_risk") if risk_result else None,
+            "biomechanical_efficiency_score": risk_result.get("biomechanical_efficiency_score") if risk_result else None,
+            "fatigue_risk_score": risk_result.get("fatigue_risk_score") if risk_result else None,
+            "overall_athlete_health_score": risk_result.get("overall_athlete_health_score") if risk_result else None,
         },
 
         "ai_findings": {
@@ -73,6 +77,10 @@ def generate_biomechanics_report(
             "knee_symmetry_diff_avg": summary.get("knee_symmetry_diff", {}).get("average"),
             "hip_symmetry_diff_avg": summary.get("hip_symmetry_diff", {}).get("average"),
             "balance_offset_avg": summary.get("balance_offset", {}).get("average"),
+            "stride_length_avg": summary.get("stride_length", {}).get("average"),
+            "joint_alignment_score_avg": summary.get("joint_alignment_score", {}).get("average"),
+            "landing_mechanics_score_avg": summary.get("landing_mechanics_score", {}).get("average"),
+            "force_estimation_proxy_avg": summary.get("force_estimation_proxy", {}).get("average"),
         },
 
         "recommendations": recommendations or {},

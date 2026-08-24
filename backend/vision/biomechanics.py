@@ -14,28 +14,145 @@ def calculate_frame_metrics(landmarks: dict):
     def pt(name):
         return (landmarks[name]["x"], landmarks[name]["y"])
 
-    left_knee_angle = calculate_angle(pt("left_hip"), pt("left_knee"), pt("left_ankle"))
-    right_knee_angle = calculate_angle(pt("right_hip"), pt("right_knee"), pt("right_ankle"))
-    left_hip_angle = calculate_angle(pt("left_shoulder"), pt("left_hip"), pt("left_knee"))
-    right_hip_angle = calculate_angle(pt("right_shoulder"), pt("right_hip"), pt("right_knee"))
+    left_knee_angle = calculate_angle(
+        pt("left_hip"), pt("left_knee"), pt("left_ankle")
+    )
+    right_knee_angle = calculate_angle(
+        pt("right_hip"), pt("right_knee"), pt("right_ankle")
+    )
+    left_hip_angle = calculate_angle(
+        pt("left_shoulder"), pt("left_hip"), pt("left_knee")
+    )
+    right_hip_angle = calculate_angle(
+        pt("right_shoulder"), pt("right_hip"), pt("right_knee")
+    )
 
-    shoulder_mid_x = (landmarks["left_shoulder"]["x"] + landmarks["right_shoulder"]["x"]) / 2
-    hip_mid_x = (landmarks["left_hip"]["x"] + landmarks["right_hip"]["x"]) / 2
+    shoulder_mid_x = (
+        landmarks["left_shoulder"]["x"] +
+        landmarks["right_shoulder"]["x"]
+    ) / 2
+
+    hip_mid_x = (
+        landmarks["left_hip"]["x"] +
+        landmarks["right_hip"]["x"]
+    ) / 2
+
     trunk_lean = round(abs(shoulder_mid_x - hip_mid_x), 4)
 
-    knee_gap = abs(landmarks["left_knee"]["x"] - landmarks["right_knee"]["x"])
-    ankle_gap = abs(landmarks["left_ankle"]["x"] - landmarks["right_ankle"]["x"]) + 1e-8
+    knee_gap = abs(
+        landmarks["left_knee"]["x"] -
+        landmarks["right_knee"]["x"]
+    )
+
+    ankle_gap = abs(
+        landmarks["left_ankle"]["x"] -
+        landmarks["right_ankle"]["x"]
+    ) + 1e-8
+
     knee_valgus_ratio = round(knee_gap / ankle_gap, 4)
 
-    knee_symmetry_diff = round(abs(left_knee_angle - right_knee_angle), 2)
-    hip_symmetry_diff = round(abs(left_hip_angle - right_hip_angle), 2)
+    knee_symmetry_diff = round(
+        abs(left_knee_angle - right_knee_angle), 2
+    )
 
-    ankle_mid_x = (landmarks["left_ankle"]["x"] + landmarks["right_ankle"]["x"]) / 2
-    balance_offset = round(abs(shoulder_mid_x - ankle_mid_x), 4)
+    hip_symmetry_diff = round(
+        abs(left_hip_angle - right_hip_angle), 2
+    )
 
-    shoulder_gap = abs(landmarks["left_shoulder"]["x"] - landmarks["right_shoulder"]["x"])
-    hip_gap = abs(landmarks["left_hip"]["x"] - landmarks["right_hip"]["x"]) + 1e-8
-    hip_stability_ratio = round(shoulder_gap / hip_gap, 4)
+    ankle_mid_x = (
+        landmarks["left_ankle"]["x"] +
+        landmarks["right_ankle"]["x"]
+    ) / 2
+
+    balance_offset = round(
+        abs(shoulder_mid_x - ankle_mid_x), 4
+    )
+
+    shoulder_gap = abs(
+        landmarks["left_shoulder"]["x"] -
+        landmarks["right_shoulder"]["x"]
+    )
+
+    hip_gap = abs(
+        landmarks["left_hip"]["x"] -
+        landmarks["right_hip"]["x"]
+    ) + 1e-8
+
+    hip_stability_ratio = round(
+        shoulder_gap / hip_gap, 4
+    )
+
+    # Normalized stride / foot separation
+    left_foot = pt("left_foot")
+    right_foot = pt("right_foot")
+
+    stride_length = round(
+        float(np.sqrt(
+            (left_foot[0] - right_foot[0]) ** 2 +
+            (left_foot[1] - right_foot[1]) ** 2
+        )),
+        4
+    )
+
+    # Joint alignment score
+    left_alignment_error = abs(
+        landmarks["left_knee"]["x"] -
+        (
+            landmarks["left_hip"]["x"] +
+            landmarks["left_ankle"]["x"]
+        ) / 2
+    )
+
+    right_alignment_error = abs(
+        landmarks["right_knee"]["x"] -
+        (
+            landmarks["right_hip"]["x"] +
+            landmarks["right_ankle"]["x"]
+        ) / 2
+    )
+
+    joint_alignment_score = round(
+        max(
+            0,
+            100 -
+            ((left_alignment_error + right_alignment_error) * 500)
+        ),
+        2
+    )
+
+    # Landing mechanics score
+    average_knee_angle = (
+        left_knee_angle + right_knee_angle
+    ) / 2
+
+    landing_penalty = 0
+
+    if average_knee_angle > 165:
+        landing_penalty += 30
+
+    if knee_valgus_ratio < 1.0:
+        landing_penalty += 30
+
+    if balance_offset > 0.08:
+        landing_penalty += 20
+
+    landing_mechanics_score = round(
+        max(0, 100 - landing_penalty),
+        2
+    )
+    
+    force_estimation_proxy = round(
+    min(
+        100,
+        max(
+            0,
+            (180 - average_knee_angle) * 0.4
+            + max(0, (1.0 - knee_valgus_ratio) * 40)
+            + (balance_offset * 200)
+        )
+    ),
+    2
+)
 
     return {
         "left_knee_angle": left_knee_angle,
@@ -48,6 +165,12 @@ def calculate_frame_metrics(landmarks: dict):
         "hip_symmetry_diff": hip_symmetry_diff,
         "balance_offset": balance_offset,
         "hip_stability_ratio": hip_stability_ratio,
+
+        # New M2 metrics
+        "stride_length": stride_length,
+        "joint_alignment_score": joint_alignment_score,
+        "landing_mechanics_score": landing_mechanics_score,
+        "force_estimation_proxy": force_estimation_proxy,
     }
 
 
@@ -192,3 +315,50 @@ def detect_movement_anomalies(summary: dict) -> list:
         })
 
     return anomalies
+
+
+def calculate_motion_trajectory(pose_results: list) -> dict:
+    if len(pose_results) < 2:
+        return {
+            "frames_tracked": len(pose_results),
+            "total_displacement": 0,
+            "average_frame_displacement": 0,
+        }
+
+    positions = []
+
+    for item in pose_results:
+        lm = item.get("landmarks", {})
+        left_hip = lm.get("left_hip")
+        right_hip = lm.get("right_hip")
+
+        if left_hip and right_hip:
+            center_x = (left_hip["x"] + right_hip["x"]) / 2
+            center_y = (left_hip["y"] + right_hip["y"]) / 2
+            positions.append((center_x, center_y))
+
+    if len(positions) < 2:
+        return {
+            "frames_tracked": len(positions),
+            "total_displacement": 0,
+            "average_frame_displacement": 0,
+        }
+
+    distances = []
+
+    for i in range(1, len(positions)):
+        x1, y1 = positions[i - 1]
+        x2, y2 = positions[i]
+
+        distance = float(np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
+        distances.append(distance)
+
+    return {
+        "frames_tracked": len(positions),
+        "total_displacement": round(sum(distances), 4),
+        "average_frame_displacement": round(float(np.mean(distances)), 4),
+        "trajectory_points": [
+            {"x": round(x, 4), "y": round(y, 4)}
+            for x, y in positions
+        ],
+    }

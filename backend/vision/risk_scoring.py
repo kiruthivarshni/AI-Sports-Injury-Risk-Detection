@@ -135,6 +135,62 @@ def predict_injury_categories(summary: dict, risk_score: float) -> list:
     categories.sort(key=lambda x: x["probability"], reverse=True)
     return categories
 
+def calculate_overuse_injury_risk(
+    summary: dict,
+    training_load: str = "",
+    injury_history: str = ""
+) -> dict:
+    asymmetry = score_movement_asymmetry(summary)
+    training = score_training_load(training_load)
+    history = score_historical_injury_factors(injury_history)
+    fatigue = score_fatigue_indicators(summary)
+
+    score = round(
+        asymmetry * 0.30 +
+        training * 0.30 +
+        history * 0.20 +
+        fatigue * 0.20,
+        2
+    )
+
+    level = (
+        "Low" if score < 25 else
+        "Moderate" if score < 50 else
+        "High" if score < 75 else
+        "Critical"
+    )
+
+    return {
+        "score": score,
+        "level": level
+    }
+
+
+def calculate_biomechanical_efficiency_score(summary: dict) -> float:
+    deviation = score_biomechanical_deviations(summary)
+    asymmetry = score_movement_asymmetry(summary)
+
+    return round(
+        max(0, 100 - (deviation * 0.6 + asymmetry * 0.4)),
+        2
+    )
+
+
+def calculate_overall_health_score(
+    injury_risk_score: float,
+    biomechanical_efficiency: float,
+    fatigue_risk: float
+) -> float:
+    return round(
+        max(
+            0,
+            biomechanical_efficiency * 0.40 +
+            (100 - injury_risk_score) * 0.40 +
+            (100 - fatigue_risk) * 0.20
+        ),
+        2
+    )
+
 
 def calculate_injury_risk(
     summary: dict,
@@ -148,12 +204,13 @@ def calculate_injury_risk(
     fatigue = score_fatigue_indicators(summary)
 
     total_score = (
-        biomechanical * 0.35 +
-        historical * 0.20 +
-        asymmetry * 0.20 +
-        training * 0.15 +
-        fatigue * 0.10
+        biomechanical * 0.35
+        + historical * 0.20
+        + asymmetry * 0.20
+        + training * 0.15
+        + fatigue * 0.10
     )
+
     total_score = round(total_score, 2)
 
     if total_score < 25:
@@ -165,14 +222,45 @@ def calculate_injury_risk(
     else:
         category = "Critical Risk"
 
-    injury_probability = round(min(total_score * 0.8, 95), 1)
-    injury_categories = predict_injury_categories(summary, total_score)
+    injury_probability = round(
+        min(total_score * 0.8, 95),
+        1
+    )
+
+    injury_categories = predict_injury_categories(
+        summary,
+        total_score
+    )
+
+    overuse_risk = calculate_overuse_injury_risk(
+        summary,
+        training_load,
+        injury_history
+    )
+
+    biomechanical_efficiency = (
+        calculate_biomechanical_efficiency_score(summary)
+    )
+
+    fatigue_risk_score = fatigue
+
+    overall_athlete_health_score = (
+        calculate_overall_health_score(
+            total_score,
+            biomechanical_efficiency,
+            fatigue_risk_score
+        )
+    )
 
     return {
         "injury_risk_score": total_score,
         "risk_category": category,
         "injury_probability": injury_probability,
         "injury_categories": injury_categories,
+        "overuse_injury_risk": overuse_risk,
+        "biomechanical_efficiency_score": biomechanical_efficiency,
+        "fatigue_risk_score": fatigue_risk_score,
+        "overall_athlete_health_score": overall_athlete_health_score,
         "breakdown": {
             "biomechanical_deviations": biomechanical,
             "historical_injury_factors": historical,
